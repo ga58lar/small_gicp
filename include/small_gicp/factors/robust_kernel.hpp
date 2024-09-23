@@ -50,6 +50,26 @@ public:
   const double c;  ///< Kernel width
 };
 
+/// @brief GemanMcClure robust kernel
+struct GemanMcClure {
+public:
+  /// @brief GemanMcClure robust kernel setting
+  struct Setting {
+  double c = 1.0; ///< Kernel width
+  };
+
+  /// @brief Constructor
+  GemanMcClure(const Setting& setting) : c(setting.c) {}
+
+  /// @brief Compute the weight for an error
+  /// @param e Error
+  /// @return Weight
+  double weight(double e) const { return (c * c) / ((c + e * e) * (c + e * e)); }
+
+public:
+  const double c; ///< Kernel width
+};
+
 /// @brief Robustify a factor with a robust kernel
 /// @tparam Kernel  Robust kernel
 /// @tparam Factor  Factor

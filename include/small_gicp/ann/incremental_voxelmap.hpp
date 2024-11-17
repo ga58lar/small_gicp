@@ -42,7 +42,7 @@ public:
 
   /// @brief Constructor.
   /// @param leaf_size  Voxel size
-  explicit IncrementalVoxelMap(double leaf_size) : inv_leaf_size(1.0 / leaf_size), lru_horizon(100), lru_clear_cycle(10), lru_counter(0) { set_search_offsets(1); }
+  explicit IncrementalVoxelMap(double leaf_size) : inv_leaf_size(1.0 / leaf_size), removal_horizon(100), lru_clear_cycle(10), lru_counter(0) { set_search_offsets(1); }
 
   /// @brief Number of points in the voxelmap.
   size_t size() const { return flat_voxels.size(); }
@@ -73,7 +73,7 @@ public:
     if ((++lru_counter) % lru_clear_cycle == 0) {
       // Remove least recently used voxels
       auto remove_counter = std::remove_if(flat_voxels.begin(), flat_voxels.end(), [&](const std::shared_ptr<std::pair<VoxelInfo, VoxelContents>>& voxel) {
-        return voxel->first.lru + lru_horizon < lru_counter;
+        return voxel->first.lru + removal_horizon < lru_counter;
       });
       flat_voxels.erase(remove_counter, flat_voxels.end());
 
@@ -82,6 +82,49 @@ public:
       for (size_t i = 0; i < flat_voxels.size(); i++) {
         voxels[flat_voxels[i]->first.coord] = i;
       }
+    }
+
+    // Finalize voxel means and covs
+    for (auto& voxel : flat_voxels) {
+      voxel->second.finalize();
+    }
+  }
+
+  /// @brief Insert points to the voxelmap and remove based on the distance (KISS-ICP).
+  /// @param points Point cloud
+  /// @param T      Transformation matrix
+  template <typename PointCloud>
+  void distance_insert(const PointCloud& points, const Eigen::Isometry3d& T = Eigen::Isometry3d::Identity()) {
+    // Insert points to the voxelmap
+    for (size_t i = 0; i < traits::size(points); i++) {
+      const Eigen::Vector4d pt = T * traits::point(points, i);
+      const Eigen::Vector3i coord = fast_floor(pt * inv_leaf_size).template head<3>();
+
+      auto found = voxels.find(coord);
+      if (found == voxels.end()) {
+        auto voxel = std::make_shared<std::pair<VoxelInfo, VoxelContents>>(VoxelInfo(coord, lru_counter), VoxelContents());
+
+        found = voxels.emplace_hint(found, coord, flat_voxels.size());
+        flat_voxels.emplace_back(voxel);
+      }
+
+      auto& [info, voxel] = *flat_voxels[found->second];
+      info.lru = lru_counter;
+      voxel.add(voxel_setting, pt, points, i, T);
+    }
+
+    // Remove voxels based on distance to the current ego pose
+    auto remove_counter = std::remove_if(flat_voxels.begin(), flat_voxels.end(), [&](const std::shared_ptr<std::pair<VoxelInfo, VoxelContents>>& voxel) {
+      const Eigen::Vector3d voxel_coord = voxel->first.coord.template cast<double>() * (1.0 / inv_leaf_size);
+      const double distance = (voxel_coord - T.translation()).norm();
+      return distance > removal_horizon;
+    });
+    flat_voxels.erase(remove_counter, flat_voxels.end());
+
+    // Rehash
+    voxels.clear();
+    for (size_t i = 0; i < flat_voxels.size(); i++) {
+      voxels[flat_voxels[i]->first.coord] = i;
     }
 
     // Finalize voxel means and covs
@@ -190,7 +233,7 @@ public:
   static constexpr int voxel_id_bits = 64 - point_id_bits;  ///< Use the remaining bits for voxel id
   const double inv_leaf_size;                               ///< Inverse of the voxel size
 
-  size_t lru_horizon;      ///< LRU horizon size. Voxels that have not been accessed for lru_horizon steps are deleted.
+  size_t removal_horizon;      ///< LRU horizon size. Voxels that have not been accessed for removal_horizon steps are deleted.
   size_t lru_clear_cycle;  ///< LRU clear cycle. Voxel deletion is performed every lru_clear_cycle steps.
   size_t lru_counter;      ///< LRU counter. Incremented every step.
 

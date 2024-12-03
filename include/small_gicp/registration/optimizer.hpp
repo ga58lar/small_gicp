@@ -57,7 +57,8 @@ struct GaussNewtonOptimizer {
       result.error = e;
     }
 
-    result.num_inliers = std::count_if(factors.begin(), factors.end(), [](const auto& factor) { return factor.inlier(); });
+    result.num_inliers = static_cast<double>(std::count_if(factors.begin(), factors.end(), [](const auto& factor) { return factor.inlier(); }))
+      / factors.size() * 100.0;
 
     return result;
   }

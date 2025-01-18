@@ -40,7 +40,7 @@ std::shared_ptr<OutputPointCloud> voxelgrid_sampling_tbb(const InputPointCloud& 
     for (size_t i = range.begin(); i != range.end(); i++) {
       const Eigen::Array4i coord = fast_floor(traits::point(points, i) * inv_leaf_size) + coord_offset;
       if ((coord < 0).any() || (coord > coord_bit_mask).any()) {
-        std::cerr << "warning: voxel coord is out of range!!" << std::endl;
+        std::cerr << "warning: voxel coord is out of range!! Point: " << traits::point(points, i).transpose() << std::endl;
         coord_pt[i] = {invalid_coord, i};
         continue;
       }

@@ -125,6 +125,7 @@ struct LevenbergMarquardtOptimizer {
           result.T_target_source = new_T;
           lambda /= lambda_factor;
           success = true;
+          e = new_e;
 
           break;
         } else {
